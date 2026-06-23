@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: milsys-rdc-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: API_PREFIX
+        value: /api/v1
+      # ── À renseigner dans le dashboard Render ──────────────────────────
+      - key: MONGO_URI
+        sync: false          # à saisir manuellement (MongoDB Atlas)
+      - key: JWT_SECRET
+        generateValue: true  # Render génère une valeur aléatoire sécurisée
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRE
+        value: 8h
+      - key: JWT_REFRESH_EXPIRE
+        value: 7d
+      - key: ALLOWED_ORIGINS
+        sync: false          # ex: https://defensedrc.vercel.app
+      # ── Paramètres fixes ───────────────────────────────────────────────
+      - key: RATE_LIMIT_WINDOW
+        value: 15
+      - key: RATE_LIMIT_MAX
+        value: 1000
+      - key: AUTH_RATE_LIMIT_MAX
+        value: 50
+      - key: OTP_ISSUER
+        value: MILSYS-RDC
+      - key: OTP_WINDOW
+        value: 1
+      - key: MAX_FILE_SIZE
+        value: 10485760
+      - key: UPLOAD_PATH
+        value: ./uploads
+      - key: LOG_LEVEL
+        value: warn

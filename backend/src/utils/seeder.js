@@ -80,6 +80,17 @@ const importData = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('[Seeder] Connecté à MongoDB');
 
+    // En production, skip si la base est déjà initialisée
+    if (process.env.NODE_ENV === 'production') {
+      const existingUsers = await User.countDocuments();
+      if (existingUsers > 0) {
+        console.log(`[Seeder] Base déjà initialisée (${existingUsers} utilisateurs). Seed ignoré.`);
+        await mongoose.disconnect();
+        return;
+      }
+      console.log('[Seeder] Base vide — initialisation de la base de production...');
+    }
+
     // Nettoyage
     await Promise.all([
       Grade.deleteMany(), Unite.deleteMany(), Militaire.deleteMany(),

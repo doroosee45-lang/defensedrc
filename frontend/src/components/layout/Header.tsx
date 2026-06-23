@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Bell, Search, Shield, Wifi, Clock, ChevronDown, User, Settings, LogOut, AlertCircle } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -225,18 +226,18 @@ export default function Header({ title, subtitle }: HeaderProps) {
                   )}
                 </div>
                 <div className="p-2">
-                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#8fa88f] hover:text-[#e8f0e8] hover:bg-[#1a261a] transition-all">
+                  <Link href="/dashboard/profil" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#8fa88f] hover:text-[#e8f0e8] hover:bg-[#1a261a] transition-all">
                     <User size={13} />
                     Mon profil
-                  </button>
-                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#8fa88f] hover:text-[#e8f0e8] hover:bg-[#1a261a] transition-all">
+                  </Link>
+                  <Link href="/dashboard/securite" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#8fa88f] hover:text-[#e8f0e8] hover:bg-[#1a261a] transition-all">
                     <Shield size={13} />
                     Sécurité du compte
-                  </button>
-                  <button type="button" className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#8fa88f] hover:text-[#e8f0e8] hover:bg-[#1a261a] transition-all">
+                  </Link>
+                  <Link href="/dashboard/parametres" onClick={() => setShowProfile(false)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[#8fa88f] hover:text-[#e8f0e8] hover:bg-[#1a261a] transition-all">
                     <Settings size={13} />
                     Paramètres
-                  </button>
+                  </Link>
                   <div className="border-t border-[#1e321e] mt-2 pt-2">
                     <button
                       type="button"

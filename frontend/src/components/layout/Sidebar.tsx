@@ -105,12 +105,14 @@ const SidebarContent = memo(function SidebarContent({
   setCollapsed,
   user,
   logout,
+  onLinkClick,
 }: {
   pathname: string
   collapsed: boolean
   setCollapsed: (v: boolean) => void
   user: ReturnType<typeof useAuth>['user']
   logout: () => void
+  onLinkClick?: () => void
 }) {
   const [pendingHref, setPendingHref] = useState<string | null>(null)
   useEffect(() => { setPendingHref(null) }, [pathname])
@@ -200,7 +202,7 @@ const SidebarContent = memo(function SidebarContent({
             <Link
               key={idx}
               href={item.href!}
-              onClick={() => setPendingHref(item.href!)}
+              onClick={() => { setPendingHref(item.href!); onLinkClick?.() }}
               className={clsx('sidebar-link', showActive && 'active', collapsed && 'justify-center px-2')}
               title={collapsed ? item.label : undefined}
             >
@@ -282,7 +284,7 @@ export default function Sidebar() {
         <div className="lg:hidden fixed inset-0 z-40">
           <div className="absolute inset-0 bg-black/60" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 bottom-0 w-64 bg-[#0a110a] border-r border-[#1e321e] overflow-y-auto">
-            <SidebarContent pathname={pathname} collapsed={false} setCollapsed={() => {}} user={user} logout={logout} />
+            <SidebarContent pathname={pathname} collapsed={false} setCollapsed={() => {}} user={user} logout={logout} onLinkClick={() => setMobileOpen(false)} />
           </aside>
         </div>
       )}

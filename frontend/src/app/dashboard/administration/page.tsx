@@ -273,7 +273,7 @@ export default function AdministrationPage() {
           <StatCard title="Utilisateurs actifs" value={isLoading ? '…' : utilisateurs.filter(u => u.actif).length} icon={<Users size={16} />} color="green" size="sm" />
           <StatCard title="Services en ligne"   value={systemStatus.filter(s => s.statut === 'operationnel').length}                           icon={<Server size={16} />} color="blue"   size="sm" />
           <StatCard title="Rôles configurés"    value={ROLE_OPTIONS.length}                                                                     icon={<Shield size={16} />} color="yellow" size="sm" />
-          <StatCard title="Total utilisateurs"  value={isLoading ? '…' : utilisateurs.length}                                                   icon={<Settings size={16} />} color="red" size="sm" />
+          <StatCard title="Total utilisateurs"  value={isLoading ? '…' : utilisateurs.length}                                                   icon={<Users size={16} />} color="red" size="sm" />
         </div>
 
         {/* Tabs */}

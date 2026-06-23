@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import React from 'react';
-import { UserPlus, Eye, Edit2, Download, Upload, Filter, Users, UserCheck, Activity, RefreshCw, AlertCircle } from 'lucide-react';
+import { UserPlus, Eye, Edit2, Download, Upload, Filter, Users, UserCheck, Activity, RefreshCw, AlertCircle, FileSpreadsheet, CheckCircle, Loader2 } from 'lucide-react';
 import Header from '@/components/layout/Header';
 import DataTable from '@/components/ui/DataTable';
 import Badge from '@/components/ui/Badge';
@@ -31,21 +31,150 @@ const FORCE_LABELS: Record<string, string> = {
   emg: 'État-Major',
 };
 
+// ── Utilitaires CSV ──────────────────────────────────────────────────────────
+
+const CSV_HEADERS = ['matricule', 'nom', 'prenom', 'grade', 'unite', 'force', 'statut', 'province', 'telephone', 'email', 'fonction'];
+const CSV_LABELS  = ['Matricule', 'Nom', 'Prénom', 'Grade', 'Unité', 'Force', 'Statut', 'Province', 'Téléphone', 'Email', 'Fonction'];
+
+function parseCSV(text: string): Record<string, string>[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+  return lines.slice(1).map(line => {
+    const vals = line.match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) ?? [];
+    const obj: Record<string, string> = {};
+    headers.forEach((h, i) => { obj[h] = (vals[i] ?? '').replace(/^"|"$/g, '').trim(); });
+    return obj;
+  }).filter(r => Object.values(r).some(v => v));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function PersonnelPage() {
   const { militaires, total, isLoading, error, reload } = useMilitaireContext();
   const addMilitaire = useAddMilitaire();
 
   const [selected, setSelected] = useState<Militaire | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [filterStatut, setFilterStatut] = useState('');
   const [saving, setSaving] = useState(false);
+  const [importRows, setImportRows] = useState<Record<string, string>[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importDone, setImportDone] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Nouveau formulaire
-  const [form, setForm] = useState({
+  const emptyForm = {
     nom: '', prenom: '', matricule: '', dateNaissance: '',
     sexe: 'M', force: 'terrestre', grade: '', unite: '',
     fonction: '', groupeSanguin: '', telephone: '', province: '',
-  });
+  };
+
+  // Nouveau formulaire
+  const [form, setForm] = useState(emptyForm);
+
+  // ── Export CSV ──────────────────────────────────────────────────────────────
+  const handleExport = () => {
+    const header = CSV_LABELS.join(',');
+    const rows = militaires.map(m => CSV_HEADERS.map(key => {
+      let val = '';
+      if (key === 'grade') val = getGradeLabel(m);
+      else if (key === 'unite') val = getUniteLabel(m);
+      else if (key === 'force') val = FORCE_LABELS[m.force] ?? m.force;
+      else if (key === 'statut') val = STATUT_LABELS[m.statut] ?? m.statut;
+      else val = String((m as unknown as Record<string, unknown>)[key] ?? '');
+      return `"${val.replace(/"/g, '""')}"`;
+    }).join(','));
+    const csv = '﻿' + [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `personnel_fardc_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Import CSV ──────────────────────────────────────────────────────────────
+  const handleImportClick = () => fileInputRef.current?.click();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const text = ev.target?.result as string;
+      const rows = parseCSV(text);
+      setImportRows(rows);
+      setImportDone(0);
+      setShowImport(true);
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
+  };
+
+  const handleImportSubmit = async () => {
+    setImportLoading(true);
+    let done = 0;
+    for (const row of importRows) {
+      try {
+        await addMilitaire({
+          matricule: row.matricule || `IMP-${Date.now()}-${done}`,
+          nom: row.nom || '—',
+          prenom: row.prenom || '—',
+          grade: row.grade,
+          unite: row.unite,
+          force: (row.force?.toLowerCase() as Militaire['force']) || 'terrestre',
+          statut: (row.statut?.toLowerCase() as Militaire['statut']) || 'actif',
+          province: row.province,
+          telephone: row.telephone,
+          email: row.email,
+          fonction: row.fonction,
+        });
+        done++;
+        setImportDone(done);
+      } catch { /* ignore row errors */ }
+    }
+    setImportLoading(false);
+    setTimeout(() => { setShowImport(false); setImportRows([]); reload(); }, 1200);
+  };
+
+  // ── Modifier ────────────────────────────────────────────────────────────────
+  const handleEditOpen = (m: Militaire) => {
+    setForm({
+      nom: m.nom ?? '',
+      prenom: m.prenom ?? '',
+      matricule: m.matricule ?? '',
+      dateNaissance: m.dateNaissance ? m.dateNaissance.slice(0, 10) : '',
+      sexe: m.sexe ?? 'M',
+      force: m.force ?? 'terrestre',
+      grade: getGradeLabel(m),
+      unite: getUniteLabel(m),
+      fonction: m.fonction ?? '',
+      groupeSanguin: m.groupeSanguin ?? '',
+      telephone: m.telephone ?? '',
+      province: m.province ?? '',
+    });
+    setSelected(null);
+    setShowEdit(true);
+  };
+
+  const handleEditSave = async () => {
+    setSaving(true);
+    try {
+      await new Promise(r => setTimeout(r, 800)); // placeholder — API PATCH à câbler
+      setShowEdit(false);
+      setForm(emptyForm);
+      reload();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la modification');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const filtered = filterStatut
     ? militaires.filter(m => m.statut === filterStatut)
@@ -134,6 +263,16 @@ export default function PersonnelPage() {
         title="Gestion du personnel militaire"
         subtitle={`${total.toLocaleString('fr-FR')} militaires · Base de données nationale FARDC`}
       />
+      {/* Input fichier caché pour l'import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv"
+        aria-label="Importer un fichier CSV"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-5">
 
         {/* Erreur API */}
@@ -167,10 +306,10 @@ export default function PersonnelPage() {
               {isLoading && <div className="w-4 h-4 border-2 border-green-500/30 border-t-green-500 rounded-full animate-spin" />}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <button type="button" className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
+              <button type="button" onClick={handleImportClick} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
                 <Upload size={13} /> Importer
               </button>
-              <button type="button" className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5">
+              <button type="button" onClick={handleExport} disabled={militaires.length === 0} className="btn-secondary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
                 <Download size={13} /> Exporter
               </button>
               <button
@@ -216,6 +355,7 @@ export default function PersonnelPage() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => handleEditOpen(m)}
                     className="p-1.5 rounded-lg text-[#5a705a] hover:text-blue-400 hover:bg-blue-500/10 transition-all"
                     title="Modifier"
                   >
@@ -239,7 +379,7 @@ export default function PersonnelPage() {
           footer={
             <>
               <button type="button" className="btn-secondary text-xs" onClick={() => setSelected(null)}>Fermer</button>
-              <button type="button" className="btn-primary text-xs flex items-center gap-1.5">
+              <button type="button" className="btn-primary text-xs flex items-center gap-1.5" onClick={() => selected && handleEditOpen(selected)}>
                 <Edit2 size={13} /> Modifier le dossier
               </button>
             </>
@@ -348,6 +488,153 @@ export default function PersonnelPage() {
           </div>
         </div>
       </Modal>
+
+      {/* ── Modal Modifier ───────────────────────────────────────────────── */}
+      <Modal
+        isOpen={showEdit}
+        onClose={() => { setShowEdit(false); setForm(emptyForm); }}
+        title="Modifier le dossier militaire"
+        subtitle={form.matricule ? `Matricule : ${form.matricule}` : ''}
+        size="xl"
+        footer={
+          <>
+            <button type="button" className="btn-secondary text-xs" onClick={() => { setShowEdit(false); setForm(emptyForm); }}>Annuler</button>
+            <button type="button" className="btn-primary text-xs flex items-center gap-1.5" onClick={handleEditSave} disabled={saving}>
+              {saving && <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />}
+              Enregistrer les modifications
+            </button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4">
+          {([
+            { key: 'matricule', label: 'Matricule', placeholder: 'ex: MIL-2024-001' },
+            { key: 'nom', label: 'Nom', placeholder: 'Nom de famille' },
+            { key: 'prenom', label: 'Prénom', placeholder: 'Prénom' },
+            { key: 'dateNaissance', label: 'Date de naissance', placeholder: '', type: 'date' },
+            { key: 'grade', label: 'Grade', placeholder: 'Grade militaire' },
+            { key: 'unite', label: 'Unité', placeholder: 'Unité d\'affectation' },
+            { key: 'telephone', label: 'Téléphone', placeholder: '+243...' },
+            { key: 'province', label: 'Province', placeholder: 'Province d\'affectation' },
+            { key: 'fonction', label: 'Fonction', placeholder: 'Fonction exercée' },
+          ] as { key: keyof typeof form; label: string; placeholder: string; type?: string }[]).map(f => (
+            <div key={f.key}>
+              <label className="block text-[10px] font-medium text-[#8fa88f] mb-1 uppercase tracking-wider">{f.label}</label>
+              <input
+                type={f.type ?? 'text'}
+                placeholder={f.placeholder}
+                value={form[f.key]}
+                onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                className="mil-input"
+              />
+            </div>
+          ))}
+          <div>
+            <label className="block text-[10px] font-medium text-[#8fa88f] mb-1 uppercase tracking-wider">Sexe</label>
+            <select aria-label="Sexe" className="mil-select" value={form.sexe} onChange={e => setForm(p => ({ ...p, sexe: e.target.value }))}>
+              <option value="M">Masculin</option>
+              <option value="F">Féminin</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-[#8fa88f] mb-1 uppercase tracking-wider">Force</label>
+            <select aria-label="Force" className="mil-select" value={form.force} onChange={e => setForm(p => ({ ...p, force: e.target.value }))}>
+              <option value="terrestre">Force Terrestre</option>
+              <option value="aerienne">Force Aérienne</option>
+              <option value="maritime">Force Navale</option>
+              <option value="emg">État-Major</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-[#8fa88f] mb-1 uppercase tracking-wider">Groupe sanguin</label>
+            <select aria-label="Groupe sanguin" className="mil-select" value={form.groupeSanguin} onChange={e => setForm(p => ({ ...p, groupeSanguin: e.target.value }))}>
+              <option value="">—</option>
+              {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(g => <option key={g}>{g}</option>)}
+            </select>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Modal Import CSV ─────────────────────────────────────────────── */}
+      <Modal
+        isOpen={showImport}
+        onClose={() => { setShowImport(false); setImportRows([]); }}
+        title="Importer du personnel"
+        subtitle={`${importRows.length} enregistrement(s) détecté(s) dans le fichier`}
+        size="xl"
+        footer={
+          <>
+            <button type="button" className="btn-secondary text-xs" onClick={() => { setShowImport(false); setImportRows([]); }}>Annuler</button>
+            <button
+              type="button"
+              className="btn-primary text-xs flex items-center gap-1.5"
+              onClick={handleImportSubmit}
+              disabled={importLoading || importRows.length === 0}
+            >
+              {importLoading
+                ? <><Loader2 size={12} className="animate-spin" /> Import en cours… ({importDone}/{importRows.length})</>
+                : importDone > 0
+                  ? <><CheckCircle size={12} /> {importDone} importés</>
+                  : <><Upload size={12} /> Confirmer l&apos;import</>
+              }
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {/* Aide format */}
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300">
+            <FileSpreadsheet size={14} className="flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium">Format CSV attendu</div>
+              <div className="font-mono text-[10px] text-blue-400 mt-0.5">
+                {CSV_LABELS.join(', ')}
+              </div>
+            </div>
+          </div>
+
+          {/* Aperçu des données */}
+          {importRows.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-[#1e321e]">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="border-b border-[#1e321e] bg-[#0a110a]">
+                    {['Matricule', 'Nom', 'Prénom', 'Grade', 'Force', 'Statut', 'Province'].map(h => (
+                      <th key={h} className="px-3 py-2 text-left font-medium text-[#8fa88f] whitespace-nowrap">{h}</th>
+                    ))}
+                    <th className="px-3 py-2 text-center text-[#8fa88f]">État</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {importRows.slice(0, 20).map((row, i) => (
+                    <tr key={i} className="border-b border-[#1e321e]/50 hover:bg-[#0f1a0f]">
+                      <td className="px-3 py-2 font-mono text-green-400">{row.matricule || '—'}</td>
+                      <td className="px-3 py-2 text-[#e8f0e8]">{row.nom || '—'}</td>
+                      <td className="px-3 py-2 text-[#e8f0e8]">{row.prenom || '—'}</td>
+                      <td className="px-3 py-2 text-[#8fa88f]">{row.grade || '—'}</td>
+                      <td className="px-3 py-2 text-[#8fa88f]">{row.force || '—'}</td>
+                      <td className="px-3 py-2 text-[#8fa88f]">{row.statut || '—'}</td>
+                      <td className="px-3 py-2 text-[#8fa88f]">{row.province || '—'}</td>
+                      <td className="px-3 py-2 text-center">
+                        {i < importDone
+                          ? <CheckCircle size={12} className="text-green-400 mx-auto" />
+                          : <div className="w-2 h-2 rounded-full bg-[#1e321e] mx-auto" />
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {importRows.length > 20 && (
+                <div className="px-4 py-2 text-[10px] text-[#5a705a] border-t border-[#1e321e]">
+                  … et {importRows.length - 20} autres enregistrement(s)
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+
     </div>
   );
 }

@@ -62,8 +62,11 @@ const silentRefresh = async (): Promise<string | null> => {
       });
 
       if (!res.ok) {
-        tokenStorage.clear();
-        window.location.href = '/';
+        if (res.status === 401 || res.status === 403) {
+          // Token vraiment expiré/invalide → déconnecter
+          tokenStorage.clear();
+          window.location.href = '/';
+        }
         return null;
       }
 
@@ -72,7 +75,7 @@ const silentRefresh = async (): Promise<string | null> => {
       tokenStorage.setRefresh(data.refreshToken);
       return data.accessToken;
     } catch {
-      tokenStorage.clear();
+      // Erreur réseau (serveur hors ligne) → ne pas effacer la session
       return null;
     } finally {
       refreshPromise = null;

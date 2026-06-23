@@ -91,14 +91,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (cachedUser && refreshToken) {
         try {
-          const res = (await api.post('/auth/refresh', { refreshToken })) as unknown as AuthTokenRes;
+          const res = (await api.post('/auth/refresh', { refreshToken }, { skipAuth: true })) as unknown as AuthTokenRes;
           tokenStorage.setAccess(res.accessToken);
           tokenStorage.setRefresh(res.refreshToken);
           tokenStorage.setUser(res.user || cachedUser);
           setState({ user: (res.user || cachedUser) as AuthUser, isAuthenticated: true, isLoading: false, mfaPending: false, tempToken: null });
-        } catch {
-          tokenStorage.clear();
-          setState(s => ({ ...s, isLoading: false }));
+        } catch (err: unknown) {
+          const status = (err as { status?: number })?.status;
+          if (status === 401 || status === 403) {
+            // Token invalide ou expiré → déconnecter proprement
+            tokenStorage.clear();
+            setState(s => ({ ...s, isLoading: false }));
+          } else {
+            // Erreur réseau / serveur hors ligne → garder la session en cache
+            setState({ user: cachedUser as AuthUser, isAuthenticated: true, isLoading: false, mfaPending: false, tempToken: null });
+          }
         }
       } else {
         tokenStorage.clear();
